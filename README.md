@@ -13,6 +13,9 @@ This project is currently a work in progress. See
 [local-llm-benchmark-plan.md](local-llm-benchmark-plan.md) for the complete
 benchmark design.
 
+Implementation is divided into independently useful releases. See
+[ROADMAP.md](ROADMAP.md) for the version overview and detailed milestone plans.
+
 ## Benchmark tracks
 
 The benchmark keeps quality and performance results separate instead of
