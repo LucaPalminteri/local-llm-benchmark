@@ -67,6 +67,65 @@ The benchmark will be built in four phases:
 3. Add repository-level coding tasks with hidden tests.
 4. Run deeper evaluations only for finalist models.
 
+### v0.1 development setup
+
+The first implementation milestone is a Python CLI around `llama-bench`. It
+uses a project-local virtual environment:
+
+```powershell
+py -3.10 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -e ".[dev]"
+llmbench plan --config configs\experiments\raw-smoke.yaml
+```
+
+The committed smoke configuration uses placeholder model and executable paths.
+See [docs/windows-development.md](docs/windows-development.md) for local
+configuration, validation, and development commands.
+
+### Discover local GGUF models
+
+Model discovery reads embedded GGUF metadata locally. It does not load model
+weights or contact a remote model registry. Start with the default dry run:
+
+```powershell
+llmbench models discover
+```
+
+Without an explicit directory, discovery checks `LLMBENCH_MODEL_PATHS`,
+`LLAMA_CACHE`, the configured or default Hugging Face Hub cache, and
+conventional `models` folders. A custom directory can always be supplied:
+
+```powershell
+llmbench models discover "D:\Models"
+```
+
+For one or more nonstandard model directories, set a platform path-list
+environment variable:
+
+```powershell
+$env:LLMBENCH_MODEL_PATHS = "D:\Models;E:\Shared\Models"
+llmbench models discover
+```
+
+Review the detected models and scan notes, then generate machine-local
+configurations:
+
+```powershell
+llmbench models discover --write
+```
+
+Generated files are written to `configs/local/models/`, which is ignored by
+Git. Discovery excludes projector and adapter sidecars, represents a sharded
+model with its first shard, and records metadata such as architecture, size
+label, quantization, context length, tensor count, and total file size.
+
+Inspect one file without generating a configuration:
+
+```powershell
+llmbench models inspect "D:\Models\model.gguf"
+```
+
 ### Raw performance example
 
 Prompt processing:
