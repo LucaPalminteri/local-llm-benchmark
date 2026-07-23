@@ -126,6 +126,11 @@ Inspect one file without generating a configuration:
 llmbench models inspect "D:\Models\model.gguf"
 ```
 
+After validating the two-repetition smoke experiment, use
+`configs/experiments/raw-full.yaml` for the v0.1 seven-repetition baseline. It
+tests prompt processing plus 128- and 512-token generation at empty and 2K
+context depths.
+
 ### Raw performance example
 
 Prompt processing:

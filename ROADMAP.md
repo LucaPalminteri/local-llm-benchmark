@@ -12,7 +12,7 @@ capability while preserving the raw evidence needed to audit earlier results.
 
 | Version | Status | Name | Main outcome |
 |---|---|---|---|
-| [v0.1](docs/plans/v0.1-raw-performance.md) | In progress | Raw Performance MVP | Run reproducible `llama-bench` experiments from a Python CLI |
+| [v0.1](docs/plans/v0.1-raw-performance.md) | Completed | Raw Performance MVP | Run reproducible `llama-bench` experiments from a Python CLI |
 | [v0.2](docs/plans/v0.2-interactive-performance.md) | Planned | Interactive Performance | Measure real requests through `llama-server`, including TTFT |
 | [v0.3](docs/plans/v0.3-system-telemetry.md) | Planned | System Telemetry | Correlate performance with RAM, VRAM, and process measurements |
 | [v0.4](docs/plans/v0.4-model-quality.md) | Planned | Model-Only Quality | Evaluate reasoning and one-shot coding with deterministic graders |

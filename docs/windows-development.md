@@ -69,9 +69,10 @@ Create local runtime and experiment copies:
 ```powershell
 Copy-Item configs\profiles\vulkan-f16.yaml configs\local\runtime.yaml
 Copy-Item configs\experiments\raw-smoke.yaml configs\local\raw-smoke.yaml
+Copy-Item configs\experiments\raw-full.yaml configs\local\raw-full.yaml
 ```
 
-In `configs/local/raw-smoke.yaml`, change the references to:
+In both local experiment files, change the references to:
 
 ```yaml
 model: models/<discovered-model-id>.yaml
@@ -95,8 +96,20 @@ llmbench raw run --config configs\local\raw-smoke.yaml
 llmbench raw report --latest --config configs\local\raw-smoke.yaml
 ```
 
-The smoke experiment uses only two repetitions. Increase it to seven after the
-complete execution and reporting pipeline works with the selected model.
+The smoke experiment uses two repetitions. After it succeeds, run the v0.1
+performance matrix with seven repetitions:
+
+```powershell
+llmbench plan --config configs\local\raw-full.yaml
+llmbench raw run --config configs\local\raw-full.yaml
+```
+
+Repeat the performance run with a second model configuration, then compare the
+two run IDs:
+
+```powershell
+llmbench compare <run-id-a> <run-id-b> --config configs\local\raw-full.yaml
+```
 
 ## Development checks
 

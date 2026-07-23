@@ -1,0 +1,13 @@
+schema_version: 1
+id: raw-full
+model: ../models/example-model.yaml
+runtime: ../profiles/vulkan-f16.yaml
+
+benchmark:
+  prompt_tokens: [512]
+  generation_tokens: [128, 512]
+  prompt_generation_pairs: []
+  context_depths: [0, 2048]
+  repetitions: 7
+  timeout_seconds: 1800
+  output_directory: ../../runs
