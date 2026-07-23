@@ -1,0 +1,18 @@
+schema_version: 1
+id: vulkan-f16
+
+# Copy this file into configs/local/ and replace this path.
+llama_bench_path: 'D:\llama.cpp\llama-bench.exe'
+expected_commit: null
+backend: Vulkan
+gpu_layers: 99
+flash_attention: "on"
+
+kv_cache:
+  key: f16
+  value: f16
+
+threads: null
+batch_size: 2048
+micro_batch_size: 512
+delay_seconds: 0

@@ -1,0 +1,11 @@
+schema_version: 1
+id: example-model-q4-k-m
+display_name: Example Model Q4_K_M
+
+# Copy this file into configs/local/ and replace this path.
+gguf_path: 'D:\Models\replace-me.gguf'
+
+metadata:
+  family: null
+  parameters_billion: null
+  quantization: Q4_K_M
