@@ -4,9 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "local-llm-benchmark"
-version = "0.1.0.dev0"
+version = "0.1.0"
 description = "Reproducible local LLM performance and coding benchmarks"
 readme = "README.md"
+license = { file = "LICENSE" }
 requires-python = ">=3.10"
 dependencies = [
     "pydantic>=2.7,<3",
