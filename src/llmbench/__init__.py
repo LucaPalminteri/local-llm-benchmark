@@ -1,6 +1,6 @@
 """Local LLM benchmark runner."""
 
-APP_VERSION = "0.1.0"
+APP_VERSION = "0.2.0.dev0"
 RESULT_SCHEMA_VERSION = 1
 BENCHMARK_PROTOCOL_VERSION = "raw-v1"
 
