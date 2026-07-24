@@ -6,6 +6,8 @@ from pydantic import BaseModel, ConfigDict
 
 from llmbench import RESULT_SCHEMA_VERSION
 
+MeasurementPhase = Literal["warmup", "cold", "warm_uncached", "warm_cached"]
+
 
 class NormalizedSampleBase(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -41,6 +43,12 @@ class RawNormalizedSample(NormalizedSampleBase):
 
 class InteractiveNormalizedSample(NormalizedSampleBase):
     track: Literal["interactive"] = "interactive"
+    phase: MeasurementPhase
+    workload_id: str
+    workload_size: Literal["small", "medium", "large"]
+    target_prompt_tokens: int
+    actual_prompt_tokens: int | None = None
+    requested_output_tokens: int
 
 
 # Backward-compatible v0.1 name.

@@ -3,6 +3,7 @@ id: vulkan-f16
 
 # Copy this file into configs/local/ and replace this path.
 llama_bench_path: 'D:\llama.cpp\llama-bench.exe'
+llama_server_path: 'D:\llama.cpp\llama-server.exe'
 expected_commit: null
 backend: Vulkan
 gpu_layers: 99

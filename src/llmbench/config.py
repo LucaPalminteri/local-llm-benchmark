@@ -5,7 +5,14 @@ from pathlib import Path
 from typing import Annotated, Any, Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 
 from llmbench import INTERACTIVE_BENCHMARK_PROTOCOL_VERSION, RAW_BENCHMARK_PROTOCOL_VERSION
 
@@ -60,6 +67,7 @@ class RuntimeProfile(StrictModel):
     schema_version: Literal[1] = 1
     id: str = Field(pattern=r"^[a-z0-9][a-z0-9._-]*$")
     llama_bench_path: Path
+    llama_server_path: Path | None = None
     expected_commit: str | None = None
     backend: str = "Vulkan"
     gpu_layers: int = Field(default=99, ge=-1)
@@ -84,6 +92,34 @@ class PromptGenerationPair(StrictModel):
 
 class BenchmarkConfigBase(StrictModel):
     output_directory: Path = Path("../../runs")
+
+
+class InteractiveServerConfig(StrictModel):
+    host: str = Field(default="127.0.0.1", min_length=1)
+    port: int | Literal["auto"] = "auto"
+    readiness_timeout_seconds: float = Field(default=300, gt=0)
+    request_timeout_seconds: float = Field(default=300, gt=0)
+    context_size: int = Field(default=16384, gt=0)
+
+    @field_validator("port")
+    @classmethod
+    def validate_port(cls, value: int | Literal["auto"]) -> int | Literal["auto"]:
+        if isinstance(value, int) and not 1 <= value <= 65535:
+            raise ValueError("server port must be between 1 and 65535 or 'auto'")
+        return value
+
+
+class SamplingConfig(StrictModel):
+    temperature: float = Field(default=0.0, ge=0)
+    top_p: float = Field(default=1.0, gt=0, le=1)
+    top_k: int = Field(default=40, ge=0)
+    seed: int = 42
+
+
+class InteractiveWorkloadConfig(StrictModel):
+    id: str = Field(pattern=r"^[a-z0-9][a-z0-9._-]*$")
+    size: Literal["small", "medium", "large"]
+    target_prompt_tokens: int = Field(gt=0)
 
 
 class RawBenchmarkConfig(BenchmarkConfigBase):
@@ -120,9 +156,53 @@ class RawBenchmarkConfig(BenchmarkConfigBase):
 
 
 class InteractiveBenchmarkConfig(BenchmarkConfigBase):
-    """Minimal interactive track contract extended by the v0.2 implementation."""
-
     track: Literal["interactive"]
+    mode: Literal["smoke", "full"] = "full"
+    server: InteractiveServerConfig
+    sampling: SamplingConfig = Field(default_factory=lambda: SamplingConfig())
+    workloads: list[InteractiveWorkloadConfig] = Field(min_length=1)
+    requested_output_tokens: int = Field(gt=0)
+    warmup_requests: int = Field(default=1, ge=0)
+    repetitions: int = Field(default=10, gt=0)
+    measure_cold: bool = True
+    cold_workload_id: str | None = "small"
+    measure_warm_uncached: bool = True
+    measure_warm_cached: bool = True
+    cached_prefix_ratio: float = Field(default=0.75, gt=0, lt=1)
+
+    @model_validator(mode="after")
+    def validate_interactive_plan(self) -> InteractiveBenchmarkConfig:
+        ids = [workload.id for workload in self.workloads]
+        sizes = [workload.size for workload in self.workloads]
+        if len(ids) != len(set(ids)):
+            raise ValueError("interactive workload ids must be unique")
+        if len(sizes) != len(set(sizes)):
+            raise ValueError("interactive workload sizes must be unique")
+        if self.mode == "full" and set(sizes) != {"small", "medium", "large"}:
+            raise ValueError("full interactive experiments require small, medium, and large")
+        if self.mode == "full" and self.repetitions < 10:
+            raise ValueError("full interactive experiments require at least 10 repetitions")
+        if not (self.measure_warm_uncached or self.measure_warm_cached):
+            raise ValueError("at least one warm measurement phase must be enabled")
+
+        if self.measure_cold:
+            if self.cold_workload_id not in set(ids):
+                raise ValueError("cold_workload_id must identify a configured workload")
+        elif self.cold_workload_id is not None:
+            raise ValueError("cold_workload_id must be null when measure_cold is false")
+
+        oversized = [
+            workload.id
+            for workload in self.workloads
+            if workload.target_prompt_tokens + self.requested_output_tokens
+            > self.server.context_size
+        ]
+        if oversized:
+            raise ValueError(
+                "target prompt plus requested output exceeds server context for: "
+                + ", ".join(oversized)
+            )
+        return self
 
 
 BenchmarkConfig = Annotated[
@@ -203,6 +283,17 @@ def require_raw_benchmark(experiment: ResolvedExperiment) -> RawBenchmarkConfig:
     return benchmark
 
 
+def require_interactive_benchmark(
+    experiment: ResolvedExperiment,
+) -> InteractiveBenchmarkConfig:
+    benchmark = experiment.benchmark
+    if not isinstance(benchmark, InteractiveBenchmarkConfig):
+        raise ConfigError(
+            f"expected an interactive benchmark experiment, received track {benchmark.track!r}"
+        )
+    return benchmark
+
+
 def load_experiment(path: Path) -> ResolvedExperiment:
     experiment_path = path.resolve()
     try:
@@ -218,9 +309,21 @@ def load_experiment(path: Path) -> ResolvedExperiment:
     model = model.model_copy(
         update={"gguf_path": _resolve_path(model.gguf_path, model_path.parent)}
     )
-    runtime = runtime.model_copy(
-        update={"llama_bench_path": _resolve_path(runtime.llama_bench_path, runtime_path.parent)}
-    )
+    runtime_update: dict[str, Any] = {
+        "llama_bench_path": _resolve_path(runtime.llama_bench_path, runtime_path.parent)
+    }
+    if runtime.llama_server_path is not None:
+        runtime_update["llama_server_path"] = _resolve_path(
+            runtime.llama_server_path, runtime_path.parent
+        )
+    runtime = runtime.model_copy(update=runtime_update)
+    if (
+        isinstance(references.benchmark, InteractiveBenchmarkConfig)
+        and runtime.llama_server_path is None
+    ):
+        raise ConfigError(
+            f"interactive experiment {experiment_path} requires runtime llama_server_path"
+        )
     benchmark = references.benchmark.model_copy(
         update={
             "output_directory": _resolve_path(

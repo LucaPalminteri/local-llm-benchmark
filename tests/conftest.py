@@ -13,6 +13,8 @@ def resolved_experiment(tmp_path: Path) -> ResolvedExperiment:
     model_file.touch()
     executable = tmp_path / "llama-bench.exe"
     executable.touch()
+    server_executable = tmp_path / "llama-server.exe"
+    server_executable.touch()
 
     models = tmp_path / "models"
     profiles = tmp_path / "profiles"
@@ -40,6 +42,7 @@ def resolved_experiment(tmp_path: Path) -> ResolvedExperiment:
                 "schema_version: 1",
                 "id: test-runtime",
                 f"llama_bench_path: '{executable}'",
+                f"llama_server_path: '{server_executable}'",
                 "expected_commit: abc123",
                 "backend: Vulkan",
                 "gpu_layers: 99",

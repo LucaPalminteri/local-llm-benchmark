@@ -9,9 +9,11 @@ import yaml
 from llmbench import APP_VERSION
 from llmbench.config import (
     ConfigError,
+    InteractiveBenchmarkConfig,
     RawBenchmarkConfig,
     ResolvedExperiment,
     load_experiment,
+    require_interactive_benchmark,
     require_raw_benchmark,
 )
 from llmbench.discovery import (
@@ -24,7 +26,7 @@ from llmbench.discovery import (
 )
 from llmbench.doctor import run_doctor
 from llmbench.llama_bench import build_command
-from llmbench.planner import expand_cases
+from llmbench.planner import expand_cases, expand_interactive_cases
 from llmbench.reporting import (
     compare_summaries,
     find_latest_run,
@@ -102,6 +104,10 @@ def plan(
 ) -> None:
     """Show the complete benchmark matrix without executing it."""
     experiment = _load_or_exit(config)
+    if experiment.track == "interactive":
+        _show_interactive_plan(experiment)
+        return
+
     benchmark = _raw_benchmark_or_exit(experiment)
     cases = expand_cases(experiment)
     typer.echo(
@@ -370,6 +376,45 @@ def _raw_benchmark_or_exit(experiment: ResolvedExperiment) -> RawBenchmarkConfig
         return require_raw_benchmark(experiment)
     except ConfigError as error:
         _fail(str(error))
+
+
+def _interactive_benchmark_or_exit(
+    experiment: ResolvedExperiment,
+) -> InteractiveBenchmarkConfig:
+    try:
+        return require_interactive_benchmark(experiment)
+    except ConfigError as error:
+        _fail(str(error))
+
+
+def _show_interactive_plan(experiment: ResolvedExperiment) -> None:
+    benchmark = _interactive_benchmark_or_exit(experiment)
+    cases = expand_interactive_cases(experiment)
+    request_count = sum(case.repetitions for case in cases)
+    measured_count = sum(case.repetitions for case in cases if case.phase != "warmup")
+    endpoint = f"{benchmark.server.host}:{benchmark.server.port}"
+
+    typer.echo(
+        f"Experiment {experiment.id}: {len(cases)} cases, "
+        f"{request_count} requests ({measured_count} measured)"
+    )
+    typer.echo(
+        f"Server: {endpoint} | context {benchmark.server.context_size} | "
+        f"ready timeout {benchmark.server.readiness_timeout_seconds:g}s | "
+        f"request timeout {benchmark.server.request_timeout_seconds:g}s"
+    )
+    typer.echo(
+        f"Sampling: temperature {benchmark.sampling.temperature:g} | "
+        f"top_p {benchmark.sampling.top_p:g} | top_k {benchmark.sampling.top_k} | "
+        f"seed {benchmark.sampling.seed}"
+    )
+    typer.echo("CASE ID                         WORKLOAD  PHASE            INPUT  OUTPUT  REQUESTS")
+    for case in cases:
+        typer.echo(
+            f"{case.case_id:<31} {case.workload_size:<9} {case.phase:<16} "
+            f"{case.target_prompt_tokens:>5} {case.requested_output_tokens:>7} "
+            f"{case.repetitions:>9}"
+        )
 
 
 def _display_command(command: list[str]) -> str:

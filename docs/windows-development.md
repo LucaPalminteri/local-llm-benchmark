@@ -70,6 +70,8 @@ Create local runtime and experiment copies:
 Copy-Item configs\profiles\vulkan-f16.yaml configs\local\runtime.yaml
 Copy-Item configs\experiments\raw-smoke.yaml configs\local\raw-smoke.yaml
 Copy-Item configs\experiments\raw-full.yaml configs\local\raw-full.yaml
+Copy-Item configs\experiments\interactive-smoke.yaml configs\local\interactive-smoke.yaml
+Copy-Item configs\experiments\interactive-full.yaml configs\local\interactive-full.yaml
 ```
 
 In both local experiment files, change the references to:
@@ -81,8 +83,8 @@ runtime: runtime.yaml
 
 Then edit:
 
-- `configs/local/runtime.yaml`: set `llama_bench_path` and optionally
-  `expected_commit`.
+- `configs/local/runtime.yaml`: set `llama_bench_path`,
+  `llama_server_path`, and optionally `expected_commit`.
 
 As a manual fallback, copy `configs/models/example-model.yaml` into
 `configs/local/models/` and set its `gguf_path` yourself.
@@ -110,6 +112,20 @@ two run IDs:
 ```powershell
 llmbench compare <run-id-a> <run-id-b> --config configs\local\raw-full.yaml
 ```
+
+Validate the interactive smoke and full plans before starting server
+implementation or execution:
+
+```powershell
+llmbench plan --config configs\local\interactive-smoke.yaml
+llmbench plan --config configs\local\interactive-full.yaml
+```
+
+The smoke plan uses one approximately 500-token workload and two warm
+repetitions. The full plan defines approximately 500-, 4,000-, and
+12,000-token workloads with ten warm uncached and ten warm cached-prefix
+requests per size. Actual input-token counts will be resolved through the
+loaded server tokenizer during a later v0.2 phase.
 
 ## Development checks
 

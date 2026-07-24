@@ -40,6 +40,26 @@ def _write_experiment(
     )
 
 
+def _interactive_benchmark_lines(output_directory: str) -> list[str]:
+    return [
+        "track: interactive",
+        "mode: smoke",
+        "server:",
+        "  host: 127.0.0.1",
+        "  port: auto",
+        "  context_size: 4096",
+        "workloads:",
+        "  - id: small",
+        "    size: small",
+        "    target_prompt_tokens: 500",
+        "requested_output_tokens: 128",
+        "warmup_requests: 1",
+        "repetitions: 2",
+        "cold_workload_id: small",
+        f"output_directory: {output_directory}",
+    ]
+
+
 def test_legacy_experiment_defaults_to_raw_track(
     resolved_experiment: ResolvedExperiment,
 ) -> None:
@@ -55,10 +75,7 @@ def test_loads_minimal_interactive_experiment(
     _write_experiment(
         path,
         resolved_experiment,
-        [
-            "track: interactive",
-            "output_directory: runs",
-        ],
+        _interactive_benchmark_lines("runs"),
     )
 
     experiment = load_experiment(path)
@@ -106,10 +123,7 @@ def test_manifests_store_track_specific_protocols(
     _write_experiment(
         path,
         resolved_experiment,
-        [
-            "track: interactive",
-            "output_directory: interactive-runs",
-        ],
+        _interactive_benchmark_lines("interactive-runs"),
     )
     interactive = load_experiment(path)
     _, interactive_paths = create_run(interactive, [], {})

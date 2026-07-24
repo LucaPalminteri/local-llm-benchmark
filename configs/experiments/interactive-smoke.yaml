@@ -1,0 +1,32 @@
+schema_version: 1
+id: interactive-smoke
+model: ../models/example-model.yaml
+runtime: ../profiles/vulkan-f16.yaml
+
+benchmark:
+  track: interactive
+  mode: smoke
+  server:
+    host: 127.0.0.1
+    port: auto
+    readiness_timeout_seconds: 300
+    request_timeout_seconds: 300
+    context_size: 16384
+  sampling:
+    temperature: 0
+    top_p: 1
+    top_k: 40
+    seed: 42
+  workloads:
+    - id: small
+      size: small
+      target_prompt_tokens: 500
+  requested_output_tokens: 128
+  warmup_requests: 1
+  repetitions: 2
+  measure_cold: true
+  cold_workload_id: small
+  measure_warm_uncached: true
+  measure_warm_cached: true
+  cached_prefix_ratio: 0.75
+  output_directory: ../../runs
