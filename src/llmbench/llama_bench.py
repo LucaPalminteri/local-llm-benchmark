@@ -5,7 +5,7 @@ import subprocess
 from dataclasses import dataclass
 from typing import Any
 
-from llmbench.config import ResolvedExperiment
+from llmbench.config import ResolvedExperiment, require_raw_benchmark
 from llmbench.models import NormalizedSample
 from llmbench.planner import BenchCase
 
@@ -26,7 +26,7 @@ class ProcessResult:
 
 def build_command(experiment: ResolvedExperiment, case: BenchCase) -> list[str]:
     runtime = experiment.runtime
-    benchmark = experiment.benchmark
+    benchmark = require_raw_benchmark(experiment)
 
     command = [
         str(runtime.llama_bench_path),
@@ -170,7 +170,7 @@ def normalize_records(
     if not isinstance(samples_ns, list) or len(samples_ns) != len(samples_ts):
         raise LlamaBenchParseError("result samples_ns must match the number of samples_ts")
 
-    if len(samples_ts) != experiment.benchmark.repetitions:
+    if len(samples_ts) != require_raw_benchmark(experiment).repetitions:
         raise LlamaBenchParseError(
             "result repetition count does not match the configured repetitions"
         )

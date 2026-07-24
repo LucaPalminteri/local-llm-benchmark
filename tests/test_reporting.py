@@ -40,6 +40,7 @@ def test_calculates_statistics_from_individual_samples(
         )
         for index, value in enumerate([10.0, 20.0, 30.0], 1)
     ]
+    assert all(sample.track == "raw" for sample in samples)
     store_case_samples(paths, samples)
 
     summary = refresh_reports(paths)

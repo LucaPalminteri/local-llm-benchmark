@@ -2,10 +2,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+
+from llmbench import INTERACTIVE_BENCHMARK_PROTOCOL_VERSION, RAW_BENCHMARK_PROTOCOL_VERSION
+
+BenchmarkTrack = Literal["raw", "interactive"]
 
 
 class ConfigError(ValueError):
@@ -78,14 +82,18 @@ class PromptGenerationPair(StrictModel):
     generation: int = Field(gt=0)
 
 
-class RawBenchmarkConfig(StrictModel):
+class BenchmarkConfigBase(StrictModel):
+    output_directory: Path = Path("../../runs")
+
+
+class RawBenchmarkConfig(BenchmarkConfigBase):
+    track: Literal["raw"] = "raw"
     prompt_tokens: list[int] = Field(default_factory=list)
     generation_tokens: list[int] = Field(default_factory=list)
     prompt_generation_pairs: list[PromptGenerationPair] = Field(default_factory=list)
     context_depths: list[int] = Field(default_factory=lambda: [0])
     repetitions: int = Field(default=7, gt=0)
     timeout_seconds: float = Field(default=1800, gt=0)
-    output_directory: Path = Path("../../runs")
 
     @model_validator(mode="after")
     def validate_matrix(self) -> RawBenchmarkConfig:
@@ -111,12 +119,36 @@ class RawBenchmarkConfig(StrictModel):
         return self
 
 
+class InteractiveBenchmarkConfig(BenchmarkConfigBase):
+    """Minimal interactive track contract extended by the v0.2 implementation."""
+
+    track: Literal["interactive"]
+
+
+BenchmarkConfig = Annotated[
+    RawBenchmarkConfig | InteractiveBenchmarkConfig,
+    Field(discriminator="track"),
+]
+
+
 class ExperimentReferences(StrictModel):
     schema_version: Literal[1] = 1
     id: str = Field(pattern=r"^[a-z0-9][a-z0-9._-]*$")
     model: Path
     runtime: Path
-    benchmark: RawBenchmarkConfig
+    benchmark: BenchmarkConfig
+
+    @model_validator(mode="before")
+    @classmethod
+    def default_legacy_benchmark_track(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+        benchmark = value.get("benchmark")
+        if not isinstance(benchmark, dict) or "track" in benchmark:
+            return value
+        updated = dict(value)
+        updated["benchmark"] = {**benchmark, "track": "raw"}
+        return updated
 
 
 @dataclass(frozen=True)
@@ -124,10 +156,14 @@ class ResolvedExperiment:
     id: str
     model: ModelConfig
     runtime: RuntimeProfile
-    benchmark: RawBenchmarkConfig
+    benchmark: RawBenchmarkConfig | InteractiveBenchmarkConfig
     experiment_path: Path
     model_path: Path
     runtime_path: Path
+
+    @property
+    def track(self) -> BenchmarkTrack:
+        return self.benchmark.track
 
 
 def _read_yaml(path: Path) -> dict[str, Any]:
@@ -150,6 +186,21 @@ def _resolve_path(path: Path, base_directory: Path) -> Path:
     if path.is_absolute():
         return path.resolve()
     return (base_directory / path).resolve()
+
+
+def benchmark_protocol_version(track: BenchmarkTrack) -> str:
+    if track == "raw":
+        return RAW_BENCHMARK_PROTOCOL_VERSION
+    return INTERACTIVE_BENCHMARK_PROTOCOL_VERSION
+
+
+def require_raw_benchmark(experiment: ResolvedExperiment) -> RawBenchmarkConfig:
+    benchmark = experiment.benchmark
+    if not isinstance(benchmark, RawBenchmarkConfig):
+        raise ConfigError(
+            f"expected a raw benchmark experiment, received track {benchmark.track!r}"
+        )
+    return benchmark
 
 
 def load_experiment(path: Path) -> ResolvedExperiment:

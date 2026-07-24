@@ -5,14 +5,21 @@ import io
 import statistics
 from collections import defaultdict
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
-from llmbench import BENCHMARK_PROTOCOL_VERSION, RESULT_SCHEMA_VERSION
+from llmbench import (
+    RAW_BENCHMARK_PROTOCOL_VERSION,
+    RESULT_SCHEMA_VERSION,
+)
+from llmbench.config import BenchmarkTrack
 from llmbench.storage import RunPaths, read_json, read_jsonl, write_json, write_text
 
 
 def build_summary(paths: RunPaths) -> dict[str, Any]:
     manifest = read_json(paths.manifest)
+    track = _manifest_track(manifest)
+    if track != "raw":
+        raise ValueError(f"raw reporting requires a raw benchmark run, received track {track!r}")
     rows = read_jsonl(paths.samples)
     rows_by_case: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in rows:
@@ -73,7 +80,10 @@ def build_summary(paths: RunPaths) -> dict[str, Any]:
     experiment = manifest["experiment"]
     return {
         "schema_version": RESULT_SCHEMA_VERSION,
-        "benchmark_protocol_version": BENCHMARK_PROTOCOL_VERSION,
+        "benchmark_track": track,
+        "benchmark_protocol_version": manifest.get(
+            "benchmark_protocol_version", RAW_BENCHMARK_PROTOCOL_VERSION
+        ),
         "run_id": manifest["run_id"],
         "model_id": experiment["model"]["id"],
         "model_name": experiment["model"]["display_name"],
@@ -155,6 +165,13 @@ def summary_to_csv(summary: dict[str, Any]) -> str:
 
 
 def compare_summaries(summaries: list[dict[str, Any]]) -> str:
+    tracks = {_summary_track(summary) for summary in summaries}
+    if len(tracks) != 1:
+        raise ValueError("cannot compare different benchmark tracks")
+    if tracks and tracks != {"raw"}:
+        track = next(iter(tracks))
+        raise ValueError(f"raw comparison requires raw benchmark runs, received track {track!r}")
+
     protocol_versions = {str(summary["benchmark_protocol_version"]) for summary in summaries}
     if len(protocol_versions) != 1:
         raise ValueError("cannot compare different benchmark protocol versions")
@@ -199,12 +216,21 @@ def compare_summaries(summaries: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
-def find_latest_run(runs_directory: Path) -> Path:
+def find_latest_run(
+    runs_directory: Path,
+    *,
+    track: BenchmarkTrack | None = None,
+) -> Path:
     candidates = (
         [
             path
             for path in runs_directory.iterdir()
-            if path.is_dir() and (path / "manifest.json").is_file()
+            if path.is_dir()
+            and (path / "manifest.json").is_file()
+            and (
+                track is None
+                or _manifest_track(cast(dict[str, Any], read_json(path / "manifest.json"))) == track
+            )
         ]
         if runs_directory.is_dir()
         else []
@@ -212,6 +238,32 @@ def find_latest_run(runs_directory: Path) -> Path:
     if not candidates:
         raise FileNotFoundError(f"no benchmark runs found in {runs_directory}")
     return max(candidates, key=lambda path: path.stat().st_mtime_ns)
+
+
+def _manifest_track(manifest: dict[str, Any]) -> BenchmarkTrack:
+    track = manifest.get("benchmark_track")
+    if track in ("raw", "interactive"):
+        return cast(BenchmarkTrack, track)
+
+    protocol = manifest.get("benchmark_protocol_version")
+    if isinstance(protocol, str) and protocol.startswith("raw-"):
+        return "raw"
+    if isinstance(protocol, str) and protocol.startswith("interactive-"):
+        return "interactive"
+    raise ValueError("run manifest does not identify a supported benchmark track")
+
+
+def _summary_track(summary: dict[str, Any]) -> BenchmarkTrack:
+    track = summary.get("benchmark_track")
+    if track in ("raw", "interactive"):
+        return cast(BenchmarkTrack, track)
+
+    protocol = summary.get("benchmark_protocol_version")
+    if isinstance(protocol, str) and protocol.startswith("raw-"):
+        return "raw"
+    if isinstance(protocol, str) and protocol.startswith("interactive-"):
+        return "interactive"
+    raise ValueError("summary does not identify a supported benchmark track")
 
 
 def _format_number(value: object) -> str:

@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from typing import Literal
 
-from llmbench.config import ResolvedExperiment
+from llmbench.config import ResolvedExperiment, require_raw_benchmark
 
 TestType = Literal["prompt", "generation", "prompt_generation"]
 
@@ -21,7 +21,7 @@ class BenchCase:
 
 
 def expand_cases(experiment: ResolvedExperiment) -> list[BenchCase]:
-    benchmark = experiment.benchmark
+    benchmark = require_raw_benchmark(experiment)
     cases: list[BenchCase] = []
 
     for depth in benchmark.context_depths:

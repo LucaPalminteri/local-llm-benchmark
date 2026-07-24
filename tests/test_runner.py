@@ -9,7 +9,7 @@ from pytest import MonkeyPatch
 from llmbench.config import ResolvedExperiment
 from llmbench.llama_bench import ProcessResult
 from llmbench.runner import run_raw_experiment
-from llmbench.storage import read_jsonl
+from llmbench.storage import read_json, read_jsonl, write_json
 
 
 def test_run_writes_samples_and_resume_skips_terminal_case(
@@ -52,6 +52,51 @@ def test_run_writes_samples_and_resume_skips_terminal_case(
 
     def unexpected_execute(command: list[str], timeout_seconds: float) -> ProcessResult:
         raise AssertionError("a terminal case must not execute during resume")
+
+    monkeypatch.setattr("llmbench.runner.execute_command", unexpected_execute)
+    resumed = run_raw_experiment(experiment, resume_run_id=first.run_id)
+
+    assert resumed.run_id == first.run_id
+    assert len(read_jsonl(resumed.paths.samples)) == 3
+
+
+def test_resume_accepts_v01_manifest_without_track(
+    resolved_experiment: ResolvedExperiment,
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    benchmark = resolved_experiment.benchmark.model_copy(
+        update={
+            "prompt_tokens": [512],
+            "generation_tokens": [],
+            "prompt_generation_pairs": [],
+            "context_depths": [0],
+            "output_directory": tmp_path / "runs",
+        }
+    )
+    experiment = replace(resolved_experiment, benchmark=benchmark)
+
+    def fake_execute(command: list[str], timeout_seconds: float) -> ProcessResult:
+        record = {
+            "build_commit": "abc123",
+            "backends": "Vulkan",
+            "n_prompt": 512,
+            "n_gen": 0,
+            "n_depth": 0,
+            "samples_ns": [100, 110, 90],
+            "samples_ts": [20.0, 19.0, 21.0],
+        }
+        return ProcessResult(command, 0, json.dumps([record]), "", False)
+
+    monkeypatch.setattr("llmbench.runner.execute_command", fake_execute)
+    first = run_raw_experiment(experiment)
+    manifest = read_json(first.paths.manifest)
+    manifest.pop("benchmark_track")
+    manifest["experiment"]["benchmark"].pop("track")
+    write_json(first.paths.manifest, manifest)
+
+    def unexpected_execute(command: list[str], timeout_seconds: float) -> ProcessResult:
+        raise AssertionError("a v0.1 terminal case must not execute during resume")
 
     monkeypatch.setattr("llmbench.runner.execute_command", unexpected_execute)
     resumed = run_raw_experiment(experiment, resume_run_id=first.run_id)

@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from llmbench.config import ResolvedExperiment
+from llmbench.config import ResolvedExperiment, require_raw_benchmark
 from llmbench.llama_bench import (
     LlamaBenchParseError,
     build_command,
@@ -46,6 +46,7 @@ class RunOutcome:
 def run_raw_experiment(
     experiment: ResolvedExperiment, *, resume_run_id: str | None = None
 ) -> RunOutcome:
+    benchmark = require_raw_benchmark(experiment)
     cases = expand_cases(experiment)
     commands = {case.case_id: build_command(experiment, case) for case in cases}
 
@@ -53,7 +54,7 @@ def run_raw_experiment(
         run_id, paths = create_run(experiment, cases, commands)
     else:
         run_id = resume_run_id
-        paths = paths_for_run(experiment.benchmark.output_directory / run_id)
+        paths = paths_for_run(benchmark.output_directory / run_id)
         _validate_resume(paths, experiment, cases, commands)
         append_event(paths, "run_resumed")
 
@@ -92,12 +93,13 @@ def _run_case(
     case: BenchCase,
     command: list[str],
 ) -> None:
+    benchmark = require_raw_benchmark(experiment)
     append_event(
         paths,
         "case_started",
         {"case_id": case.case_id, "command": command, "started_at": utc_now()},
     )
-    result = execute_command(command, experiment.benchmark.timeout_seconds)
+    result = execute_command(command, benchmark.timeout_seconds)
 
     raw_path = paths.raw_cases / f"{case.case_id}.json"
     write_text(raw_path, result.stdout)
@@ -193,11 +195,14 @@ def _validate_resume(
     expected_model = experiment.model.model_dump(mode="json")
     expected_runtime = experiment.runtime.model_dump(mode="json")
     expected_benchmark = experiment.benchmark.model_dump(mode="json")
+    existing_benchmark = existing_experiment.get("benchmark")
+    if isinstance(existing_benchmark, dict) and "track" not in existing_benchmark:
+        existing_benchmark = {**existing_benchmark, "track": "raw"}
     if existing_experiment.get("model") != expected_model:
         raise ResumeError("model configuration differs from the original run")
     if existing_experiment.get("runtime") != expected_runtime:
         raise ResumeError("runtime configuration differs from the original run")
-    if existing_experiment.get("benchmark") != expected_benchmark:
+    if existing_benchmark != expected_benchmark:
         raise ResumeError("benchmark configuration differs from the original run")
 
     expected_cases = [{**case.to_dict(), "command": commands[case.case_id]} for case in cases]

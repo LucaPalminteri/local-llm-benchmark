@@ -7,7 +7,13 @@ import typer
 import yaml
 
 from llmbench import APP_VERSION
-from llmbench.config import ConfigError, ResolvedExperiment, load_experiment
+from llmbench.config import (
+    ConfigError,
+    RawBenchmarkConfig,
+    ResolvedExperiment,
+    load_experiment,
+    require_raw_benchmark,
+)
 from llmbench.discovery import (
     DiscoveryError,
     default_model_roots,
@@ -96,10 +102,10 @@ def plan(
 ) -> None:
     """Show the complete benchmark matrix without executing it."""
     experiment = _load_or_exit(config)
+    benchmark = _raw_benchmark_or_exit(experiment)
     cases = expand_cases(experiment)
     typer.echo(
-        f"Experiment {experiment.id}: {len(cases)} cases x "
-        f"{experiment.benchmark.repetitions} repetitions"
+        f"Experiment {experiment.id}: {len(cases)} cases x {benchmark.repetitions} repetitions"
     )
     typer.echo("CASE ID                         TEST               PROMPT  GEN  DEPTH")
     for case in cases:
@@ -238,6 +244,7 @@ def raw_run(
 ) -> None:
     """Execute a raw llama-bench experiment."""
     experiment = _load_or_exit(config)
+    _raw_benchmark_or_exit(experiment)
     missing = [
         path
         for path in (
@@ -291,22 +298,26 @@ def raw_report(
 ) -> None:
     """Regenerate terminal, Markdown, and CSV reports for a run."""
     experiment = _load_or_exit(config)
+    benchmark = _raw_benchmark_or_exit(experiment)
     if latest and run_id is not None:
         _fail("provide a run ID or --latest, not both")
     if latest:
         try:
-            run_directory = find_latest_run(experiment.benchmark.output_directory)
-        except FileNotFoundError as error:
+            run_directory = find_latest_run(benchmark.output_directory, track="raw")
+        except (FileNotFoundError, ValueError) as error:
             _fail(str(error))
     elif run_id is not None:
-        run_directory = experiment.benchmark.output_directory / run_id
+        run_directory = benchmark.output_directory / run_id
     else:
         _fail("provide a run ID or use --latest")
 
     paths = paths_for_run(run_directory)
     if not paths.manifest.is_file():
         _fail(f"run manifest not found: {paths.manifest}")
-    summary = refresh_reports(paths)
+    try:
+        summary = refresh_reports(paths)
+    except ValueError as error:
+        _fail(str(error))
     typer.echo(summary_to_markdown(summary))
     typer.echo(f"Markdown: {paths.root / 'report.md'}")
     typer.echo(f"CSV: {paths.root / 'report.csv'}")
@@ -327,9 +338,10 @@ def compare(
 ) -> None:
     """Compare two compatible raw-performance runs."""
     experiment = _load_or_exit(config)
+    benchmark = _raw_benchmark_or_exit(experiment)
     summaries = []
     for run_id in (run_id_a, run_id_b):
-        paths = paths_for_run(experiment.benchmark.output_directory / run_id)
+        paths = paths_for_run(benchmark.output_directory / run_id)
         if not paths.manifest.is_file():
             _fail(f"run manifest not found: {paths.manifest}")
         summaries.append(refresh_reports(paths))
@@ -339,7 +351,7 @@ def compare(
     except ValueError as error:
         _fail(str(error))
 
-    reports_directory = experiment.benchmark.output_directory.parent / "reports"
+    reports_directory = benchmark.output_directory.parent / "reports"
     report_path = reports_directory / f"compare-{run_id_a}-vs-{run_id_b}.md"
     write_text(report_path, report)
     typer.echo(report)
@@ -349,6 +361,13 @@ def compare(
 def _load_or_exit(config: Path) -> ResolvedExperiment:
     try:
         return load_experiment(config)
+    except ConfigError as error:
+        _fail(str(error))
+
+
+def _raw_benchmark_or_exit(experiment: ResolvedExperiment) -> RawBenchmarkConfig:
+    try:
+        return require_raw_benchmark(experiment)
     except ConfigError as error:
         _fail(str(error))
 

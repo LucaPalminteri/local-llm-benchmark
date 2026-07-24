@@ -4,19 +4,25 @@ import json
 import os
 import platform
 import socket
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 from uuid import uuid4
 
 from pydantic import BaseModel
 
-from llmbench import APP_VERSION, BENCHMARK_PROTOCOL_VERSION, RESULT_SCHEMA_VERSION
-from llmbench.config import ResolvedExperiment
-from llmbench.models import NormalizedSample
-from llmbench.planner import BenchCase
+from llmbench import APP_VERSION, RESULT_SCHEMA_VERSION
+from llmbench.config import ResolvedExperiment, benchmark_protocol_version
+from llmbench.models import NormalizedSampleBase
+
+
+class RunCase(Protocol):
+    @property
+    def case_id(self) -> str: ...
+
+    def to_dict(self) -> dict[str, object]: ...
 
 
 @dataclass(frozen=True)
@@ -59,8 +65,8 @@ def new_run_id(model_id: str) -> str:
 
 def create_run(
     experiment: ResolvedExperiment,
-    cases: list[BenchCase],
-    commands: dict[str, list[str]],
+    cases: Sequence[RunCase],
+    commands: Mapping[str, list[str]],
 ) -> tuple[str, RunPaths]:
     run_id = new_run_id(experiment.model.id)
     paths = paths_for_run(experiment.benchmark.output_directory / run_id)
@@ -71,7 +77,8 @@ def create_run(
         paths.manifest,
         {
             "schema_version": RESULT_SCHEMA_VERSION,
-            "benchmark_protocol_version": BENCHMARK_PROTOCOL_VERSION,
+            "benchmark_track": experiment.track,
+            "benchmark_protocol_version": benchmark_protocol_version(experiment.track),
             "application_version": APP_VERSION,
             "run_id": run_id,
             "created_at": utc_now(),
@@ -171,7 +178,7 @@ def append_process_log(path: Path, case_id: str, contents: str) -> None:
             output.write("\n")
 
 
-def store_case_samples(paths: RunPaths, samples: list[NormalizedSample]) -> None:
+def store_case_samples(paths: RunPaths, samples: Iterable[NormalizedSampleBase]) -> None:
     append_jsonl(paths.samples, samples)
 
 
